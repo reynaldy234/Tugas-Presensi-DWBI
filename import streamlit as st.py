@@ -133,4 +133,37 @@ def create_annual_bullet_chart(kpi_name, kpi_data, df_bands):
         dx=5,
         fontWeight='bold',
         fontSize=18
-    ).encod
+    ).encode(
+        x=alt.X('Actual', title=None, scale=x_scale),
+        y=y_encoding,
+        text=alt.Text('Actual', format=format_string),
+        color=alt.value('black')
+    )
+
+    chart = (bands_chart + actual_bar + target_line + text_label).configure_view(
+        strokeOpacity=0
+    ).properties(
+        title=alt.TitleParams(kpi_name, anchor='start', fontSize=20),
+        width=800,
+        height=150
+    )
+
+    return chart
+
+
+# --- 4. TAMPILAN DASHBOARD ---
+st.header("📊 Ringkasan Kinerja 3 KPI Utama (Aktual vs Target)")
+st.caption("Gradasi biru menunjukkan tingkat performa. Garis hitam = target tahunan.")
+
+chart_revenue = create_annual_bullet_chart('Total Revenue', kpi_data, df_bands)
+chart_profit = create_annual_bullet_chart('Total Profit', kpi_data, df_bands)
+chart_aov = create_annual_bullet_chart('Average Order Value', kpi_data, df_bands)
+
+# Tampilkan semua chart
+st.altair_chart(chart_revenue, use_container_width=True)
+st.altair_chart(chart_profit, use_container_width=True)
+st.altair_chart(chart_aov, use_container_width=True)
+
+st.divider()
+st.subheader("📋 Data KPI Tahunan")
+st.dataframe(kpi_data)

@@ -57,10 +57,10 @@ kpi_data = pd.DataFrame({
     'KPI': ['Total Revenue', 'Total Profit', 'Average Order Value'],
     'Actual': [total_sales, total_profit, average_order_value],
     'Target': [TARGET_SALES, TARGET_PROFIT, TARGET_AOV],
-    'Format': ['$,.2f', '$,.2f', '$,.2f'] # Format display Altair
+    'Format': ['$,.0f', '$,.0f', '$,.2f'] # Format display Altair
 })
 
-# 2. Skema Warna dan Tier (Shades of Blue/Cyan)
+# 2. Skema Warna dan Tier
 # Monochromatic Tiers (Darker = Better Performance)
 PERFORMANCE_TIERS = {
     'Bad': {'range_end_perc': 0.80, 'color': '#add8e630'},    # Light Blue (Transparant)
@@ -74,11 +74,13 @@ bands_list = []
 for _, row in kpi_data.iterrows():
     target = row['Target']
     
+    # Tentukan batas atas domain X chart untuk KPI ini
+    max_val = max(row['Actual'], target * 1.2) * 1.15
+
     current_start = 0
     for tier, data in PERFORMANCE_TIERS.items():
         if tier == 'Amazing':
-            end = target * data['range_end_perc'] # Menggunakan 150% sebagai batas atas logis
-            if end < row['Actual']: end = row['Actual'] * 1.1 # Pastikan band Amazing mencakup nilai aktual
+            end = max_val
         else:
             end = target * data['range_end_perc']
         
@@ -94,7 +96,7 @@ for _, row in kpi_data.iterrows():
 df_bands = pd.DataFrame(bands_list)
 
 
-# --- 3. FUNGSI PEMBUATAN BULLET CHART PENUH (FIXED FOR MONOCHROMATIC & SIZE) ---
+# --- 2. FUNGSI PEMBUATAN BULLET CHART PENUH (FIXED FOR STABILITY) ---
 
 def create_annual_bullet_chart(kpi_name, kpi_data, df_bands):
     """
@@ -105,13 +107,10 @@ def create_annual_bullet_chart(kpi_name, kpi_data, df_bands):
     data = kpi_data[kpi_data['KPI'] == kpi_name]
     bands = df_bands[df_bands['KPI'] == kpi_name]
     
-    actual_max = data['Actual'].iloc[0]
-    target_val = data['Target'].iloc[0]
     format_string = data['Format'].iloc[0]
     
-    # Tentukan domain X agar mencakup semua bands dan nilai aktual
-    # Batas Maksimum ditetapkan sebagai maksimum dari (Target * 1.5) atau (Aktual * 1.1)
-    max_domain = max(target_val * 1.5, actual_max * 1.1)
+    # Tentukan domain X agar semua bands dan nilai aktual masuk
+    max_domain = bands['end'].max()
 
     # 1. Base Chart
     base = alt.Chart(data).encode(
@@ -122,12 +121,8 @@ def create_annual_bullet_chart(kpi_name, kpi_data, df_bands):
     bands_chart = alt.Chart(bands).mark_bar(height=30).encode(
         x=alt.X('start', title=None, axis=alt.Axis(format=format_string)),
         x2='end',
-        # Menggunakan warna monokromatik dari data bands
-        color=alt.Color('color', scale=None), 
+        color=alt.Color('color', scale=None),
         y=alt.Y('KPI', title=None)
-    ).transform_filter(
-        # Batasi sumbu x maksimum agar tidak terlalu lebar
-        alt.datum.start < max_domain
     )
 
     # 3. Target Line (Garis Vertikal/Tick)
@@ -136,44 +131,46 @@ def create_annual_bullet_chart(kpi_name, kpi_data, df_bands):
         thickness=3,
         size=50 
     ).encode(
-        x=alt.X('Target', title=None),
-        tooltip=[alt.Tooltip('Target', title=f'{kpi_name} Target', format=format_string)]
+        x=alt.X('Target', title=None, scale=alt.Scale(domain=[0, max_domain])),
+        tooltip=[alt.Tooltip('Target', title='Target Tahunan', format=format_string)]
     )
 
     # 4. Actual Bar (Bar Nilai Aktual) - Monochromatic Darker Shade
     actual_bar = base.mark_bar(height=25, color='#1e90ff').encode( # Warna solid darkest blue
-        x=alt.X('Actual', title=None),
-        tooltip=[alt.Tooltip('Actual', title=f'{kpi_name} Aktual', format=format_string)]
+        x=alt.X('Actual', title=None, scale=alt.Scale(domain=[0, max_domain])),
+        tooltip=[alt.Tooltip('Actual', title='Aktual Tahunan', format=format_string)]
     )
 
     # 5. Text Label (Angka di atas bar)
     text_label = base.mark_text(
         align='left',
         baseline='bottom',
-        dx=5, # Geser ke kanan agar tidak menutupi bar
+        dx=5, 
         fontWeight='bold',
         fontSize=18
     ).encode(
-        x=alt.X('Actual', title=None),
+        x=alt.X('Actual', title=None, scale=alt.Scale(domain=[0, max_domain])),
         text=alt.Text('Actual', format=format_string),
         color=alt.value('black')
     )
     
     # Gabungkan semua lapisan
-    return (bands_chart + target_line + actual_bar + text_label).configure_axis(
+    return (bands_chart + target_line + actual_bar + text_label).resolve_scale(
+        x='independent' # Resolusi skala yang independen adalah kunci di sini
+    ).configure_axis(
         grid=False
     ).configure_view(
         strokeOpacity=0
     ).properties(
         title=alt.TitleParams(kpi_name, anchor='start', fontSize=20),
-        width=700, # Ukuran chart yang lebih besar
+        width=700, 
         height=150
-    ).interactive()
+    )
 
 
 # --- Tampilan Dashboard ---
 
-st.subheader("Ringkasan Kinerja 3 KPI Utama Tahunan (Aktual vs. Target)")
+st.header("Ringkasan Kinerja 3 KPI Utama Tahunan (Aktual vs. Target)")
 st.caption("Rentang Kinerja: Warna gradien (Biru Muda ke Biru Tua) menunjukkan Tier Kinerja. Garis hitam adalah Target Tahunan.")
 
 # Buat 3 Grafik Bullet

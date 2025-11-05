@@ -13,7 +13,6 @@ st.set_page_config(
 st.title("💰 Dashboard Kinerja KPI Penjualan Tahunan (2023)")
 st.caption("Bullet Chart untuk membandingkan Aktual vs. Rata-Rata dengan Rentang Kinerja.")
 
-
 # --- Fungsi Pemuatan dan Pembersihan Data (Cache untuk performa) ---
 @st.cache_data
 def load_data():
@@ -26,11 +25,8 @@ def load_data():
         st.error("Error: File 'sales_2023.csv' tidak ditemukan. Pastikan file berada di direktori yang sama.")
         return pd.DataFrame()
     
-    # 1. Membersihkan kolom numerik (Sales dan Profit)
     df['Sales'] = df['Sales'].astype(str).str.replace(',', '.', regex=False).astype(float)
     df['Profit'] = df['Profit'].astype(str).str.replace(',', '.', regex=False).astype(float)
-    
-    # 2. Mengkonversi Order Date ke datetime
     df['Order Date'] = pd.to_datetime(df['Order Date'], format='%d/%m/%Y', errors='coerce')
     df.dropna(subset=['Order Date'], inplace=True)
 
@@ -40,7 +36,6 @@ df = load_data()
 
 if df.empty:
     st.stop()
-
 
 # --- 1. PERHITUNGAN KPI TAHUNAN (Untuk Metrik Card) ---
 TARGET_SALES = 300000.00
@@ -57,51 +52,63 @@ profit_delta = f"{((total_profit / TARGET_PROFIT) - 1) * 100:.2f}% vs Target"
 aov_delta = f"{((average_order_value / TARGET_AOV) - 1) * 100:.2f}% vs Target"
 
 
-# --- 2. PERHITUNGAN KPI KATEGORIAL DAN TARGET (RATA-RATA) ---
+# --- 2. PERHITUNGAN KPI KATEGORIAL DAN PREPARASI DATA BANDS (FIX) ---
 
-# Agregasi dasar (Category)
-kpi_by_category = df.groupby('Category').agg(
-    Actual_Sales=('Sales', 'sum'),
-    Actual_Profit=('Profit', 'sum')
-).reset_index()
-# Tambahkan Target (Rata-rata di semua kategori)
-kpi_by_category['Target_Sales'] = kpi_by_category['Actual_Sales'].mean()
-kpi_by_category['Target_Profit'] = kpi_by_category['Actual_Profit'].mean()
+def prepare_kpi_data(df, group_col):
+    """Agregasi KPI dan buat data bands untuk Bullet Chart."""
+    
+    # Agregasi Aktual
+    kpi_data = df.groupby(group_col).agg(
+        Actual_Sales=('Sales', 'sum'),
+        Actual_Profit=('Profit', 'sum')
+    ).reset_index()
+    
+    # Tambahkan Target (Rata-rata di seluruh grup)
+    kpi_data['Target_Sales'] = kpi_data['Actual_Sales'].mean()
+    kpi_data['Target_Profit'] = kpi_data['Actual_Profit'].mean()
 
-# Agregasi dasar (Region)
-kpi_by_region = df.groupby('Region').agg(
-    Actual_Sales=('Sales', 'sum'),
-    Actual_Profit=('Profit', 'sum')
-).reset_index()
-# Tambahkan Target (Rata-rata di semua wilayah)
-kpi_by_region['Target_Sales'] = kpi_by_region['Actual_Sales'].mean()
-kpi_by_region['Target_Profit'] = kpi_by_region['Actual_Profit'].mean()
+    # Siapkan data Bands
+    bands_list = []
+    
+    for _, row in kpi_data.iterrows():
+        # Target/Rata-rata untuk grup ini
+        target_sales = row['Target_Sales']
+        target_profit = row['Target_Profit']
+        
+        # Sales Bands
+        bands_list.extend([
+            {group_col: row[group_col], 'metric': 'Sales', 'start': 0, 'end': target_sales * 0.8, 'band': 'Poor', 'color': '#EA43351A'},
+            {group_col: row[group_col], 'metric': 'Sales', 'start': target_sales * 0.8, 'end': target_sales * 1.0, 'band': 'Average', 'color': '#FBBC041A'},
+            {group_col: row[group_col], 'metric': 'Sales', 'start': target_sales * 1.0, 'end': target_sales * 1.3, 'band': 'Good', 'color': '#34A8531A'},
+        ])
+        
+        # Profit Bands (Hanya dibuat jika Profit > 0)
+        bands_list.extend([
+            {group_col: row[group_col], 'metric': 'Profit', 'start': 0, 'end': target_profit * 0.8, 'band': 'Poor', 'color': '#EA43351A'},
+            {group_col: row[group_col], 'metric': 'Profit', 'start': target_profit * 0.8, 'end': target_profit * 1.0, 'band': 'Average', 'color': '#FBBC041A'},
+            {group_col: row[group_col], 'metric': 'Profit', 'start': target_profit * 1.0, 'end': target_profit * 1.3, 'band': 'Good', 'color': '#34A8531A'},
+        ])
+
+    df_bands = pd.DataFrame(bands_list)
+    return kpi_data, df_bands
+
+kpi_by_category, bands_cat = prepare_kpi_data(df, 'Category')
+kpi_by_region, bands_reg = prepare_kpi_data(df, 'Region')
 
 
-# --- 3. FUNGSI PEMBUATAN BULLET CHART PENUH ---
+# --- 3. FUNGSI PEMBUATAN BULLET CHART PENUH (FIX) ---
 
-def create_full_bullet_chart(data, group_col, actual_col, target_col, title):
+def create_full_bullet_chart(kpi_data, df_bands, group_col, actual_col, target_col, title):
     """
     Membuat grafik Bullet Chart Penuh (Actual Bar, Target Tick, dan Range Kinerja).
     """
     
-    # Tentukan Rentang Kinerja (Bands) berdasarkan persentase Target
-    band_data = []
-    target_value = data[target_col].iloc[0] # Ambil nilai target (rata-rata)
-    
-    # Band 1: Poor (0% - 80% Target)
-    band_data.append({group_col: data[group_col].iloc[0], 'start': 0, 'end': target_value * 0.8, 'color': '#EA43351A', 'label': 'Poor'})
-    # Band 2: Average (80% - 100% Target)
-    band_data.append({group_col: data[group_col].iloc[0], 'start': target_value * 0.8, 'end': target_value * 1.0, 'color': '#FBBC041A', 'label': 'Avg'})
-    # Band 3: Good (100% - 120% Target - atau sampai nilai maksimal)
-    band_data.append({group_col: data[group_col].iloc[0], 'start': target_value * 1.0, 'end': data[actual_col].max() * 1.15, 'color': '#34A8531A', 'label': 'Good'})
-
-    df_bands = pd.concat([pd.DataFrame([b]) for i in range(len(data)) for b in band_data])
-    df_bands[group_col] = np.repeat(data[group_col].values, len(band_data) // len(data))
-
+    # Filter data bands untuk metrik yang sedang diplot
+    metric_name = actual_col.split('_')[1] # 'Sales' atau 'Profit'
+    filtered_bands = df_bands[df_bands['metric'] == metric_name]
 
     # 1. Base Chart
-    base = alt.Chart(data).encode(
+    base = alt.Chart(kpi_data).encode(
         y=alt.Y(group_col, sort=alt.EncodingSortField(field=actual_col, order='descending'), title=None)
     ).properties(
         title=title,
@@ -109,7 +116,7 @@ def create_full_bullet_chart(data, group_col, actual_col, target_col, title):
     )
 
     # 2. Background Bands (Rentang Kinerja)
-    bands = alt.Chart(df_bands).mark_bar(opacity=0.5, height=20).encode(
+    bands = alt.Chart(filtered_bands).mark_bar(height=20).encode(
         x=alt.X('start', title=None, axis=alt.Axis(format='$,.0f')),
         x2='end',
         color=alt.Color('color', scale=None),
@@ -162,7 +169,6 @@ def create_full_bullet_chart(data, group_col, actual_col, target_col, title):
 
 # Bagian KPI Cards (Metrik Tahunan)
 st.subheader("Ringkasan Kinerja Tahunan (Total 2023)")
-# ... (st.metric cards dipertahankan)
 col1, col2, col3 = st.columns(3)
 with col1:
     st.metric(label="Total Revenue (Penjualan)", value=f"${total_sales:,.2f}", delta=sales_delta, delta_color="normal" if total_sales >= TARGET_SALES else "inverse")
@@ -181,7 +187,7 @@ col_cat_sales, col_cat_profit, col_reg_sales, col_reg_profit = st.columns(4)
 
 # 1. Revenue by Category
 chart_cat_sales = create_full_bullet_chart(
-    kpi_by_category, 'Category', 'Actual_Sales', 'Target_Sales', 
+    kpi_by_category, bands_cat, 'Category', 'Actual_Sales', 'Target_Sales', 
     'Revenue per Kategori'
 )
 with col_cat_sales:
@@ -189,7 +195,7 @@ with col_cat_sales:
 
 # 2. Profit by Category
 chart_cat_profit = create_full_bullet_chart(
-    kpi_by_category, 'Category', 'Actual_Profit', 'Target_Profit', 
+    kpi_by_category, bands_cat, 'Category', 'Actual_Profit', 'Target_Profit', 
     'Profit per Kategori'
 )
 with col_cat_profit:
@@ -197,7 +203,7 @@ with col_cat_profit:
 
 # 3. Revenue by Region
 chart_reg_sales = create_full_bullet_chart(
-    kpi_by_region, 'Region', 'Actual_Sales', 'Target_Sales', 
+    kpi_by_region, bands_reg, 'Region', 'Actual_Sales', 'Target_Sales', 
     'Revenue per Wilayah'
 )
 with col_reg_sales:
@@ -205,7 +211,7 @@ with col_reg_sales:
 
 # 4. Profit by Region
 chart_reg_profit = create_full_bullet_chart(
-    kpi_by_region, 'Region', 'Actual_Profit', 'Target_Profit', 
+    kpi_by_region, bands_reg, 'Region', 'Actual_Profit', 'Target_Profit', 
     'Profit per Wilayah'
 )
 with col_reg_profit:

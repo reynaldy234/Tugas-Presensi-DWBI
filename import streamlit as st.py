@@ -11,8 +11,7 @@ st.set_page_config(
 )
 
 st.title("💰 Dashboard Kinerja KPI Penjualan 2023")
-st.caption("Bullet chart gaya klasik: perbandingan aktual vs target dengan skala performa.")
-
+st.caption("Bullet chart berwarna abu–merah–hijau: menunjukkan performa aktual terhadap target.")
 
 # --- Fungsi Pemuatan Data ---
 @st.cache_data
@@ -25,6 +24,7 @@ def load_data():
         st.error("❌ File 'sales_2023.csv' tidak ditemukan.")
         return pd.DataFrame()
 
+    # Konversi tipe data
     df['Sales'] = df['Sales'].astype(str).str.replace(',', '.', regex=False).astype(float)
     df['Profit'] = df['Profit'].astype(str).str.replace(',', '.', regex=False).astype(float)
     df['Order Date'] = pd.to_datetime(df['Order Date'], format='%d/%m/%Y', errors='coerce')
@@ -61,24 +61,27 @@ def create_bullet_chart(kpi_name, df_kpi):
     actual = data['Actual']
     target = data['Target']
     fmt = data['Format']
-    max_val = max(actual, target) * 1.2
 
-    # Data untuk background band (abu-abu)
+    # Gunakan target sebagai referensi skala maksimum
+    max_val = target * 1.2
+
+    # --- Range Warna: abu, merah, hijau ---
     bands = pd.DataFrame({
-        'start': [0, target * 0.8, target],
-        'end': [target * 0.8, target, max_val],
-        'color': ['#a9a9a9', '#bfbfbf', '#d3d3d3']  # gradasi abu-abu
+        'start': [0, target * 0.4, target * 0.7],
+        'end':   [target * 0.4, target * 0.7, max_val],
+        'color': ['#b0b0b0', '#d62728', '#2ca02c']  # abu, merah, hijau
     })
 
+    # Background tiga warna
     base = alt.Chart(bands).mark_bar(size=40).encode(
-        x='start',
-        x2='end',
+        x='start:Q',
+        x2='end:Q',
         color=alt.Color('color:N', scale=None)
     )
 
-    # Bar aktual
+    # Bar nilai aktual
     actual_bar = alt.Chart(pd.DataFrame({'value': [actual]})).mark_bar(
-        color='#d62728',  # merah klasik
+        color='#a50f15',  # merah tua
         size=25
     ).encode(
         x='value:Q'
@@ -97,7 +100,7 @@ def create_bullet_chart(kpi_name, df_kpi):
         align='left',
         baseline='middle',
         dx=10,
-        fontSize=14,
+        fontSize=13,
         fontWeight='bold',
         color='black'
     ).encode(
@@ -105,6 +108,7 @@ def create_bullet_chart(kpi_name, df_kpi):
         text=alt.Text('value:Q', format=fmt)
     )
 
+    # Gabungkan semua elemen
     chart = (base + actual_bar + target_line + label).properties(
         title=alt.TitleParams(kpi_name, anchor='start', fontSize=16),
         width=800,

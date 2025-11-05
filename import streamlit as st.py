@@ -11,7 +11,7 @@ st.set_page_config(
 )
 
 st.title("💰 Dashboard Kinerja KPI Penjualan 2023")
-st.caption("Bullet chart berwarna abu–merah–hijau: menunjukkan performa aktual terhadap target.")
+st.caption("Bullet chart gradasi satu tone warna (merah muda → merah tua): menunjukkan level performa dari bad ke great.")
 
 # --- Fungsi Pemuatan Data ---
 @st.cache_data
@@ -65,14 +65,14 @@ def create_bullet_chart(kpi_name, df_kpi):
     # Gunakan target sebagai referensi skala maksimum
     max_val = target * 1.2
 
-    # --- Range Warna: abu, merah, hijau ---
+    # --- Range Warna: gradasi merah muda → merah tua ---
     bands = pd.DataFrame({
         'start': [0, target * 0.4, target * 0.7],
         'end':   [target * 0.4, target * 0.7, max_val],
-        'color': ['#b0b0b0', '#d62728', '#2ca02c']  # abu, merah, hijau
+        'color': ['#ffb3b3', '#ff6666', '#a50f15']  # pink muda → merah sedang → merah tua
     })
 
-    # Background tiga warna
+    # Background gradasi satu tone
     base = alt.Chart(bands).mark_bar(size=40).encode(
         x='start:Q',
         x2='end:Q',
@@ -81,7 +81,7 @@ def create_bullet_chart(kpi_name, df_kpi):
 
     # Bar nilai aktual
     actual_bar = alt.Chart(pd.DataFrame({'value': [actual]})).mark_bar(
-        color='#a50f15',  # merah tua
+        color='#800000',  # merah gelap
         size=25
     ).encode(
         x='value:Q'
